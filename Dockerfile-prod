@@ -1,0 +1,33 @@
+FROM rust:alpine AS builder
+
+ENV RUSTFLAGS="-C target-feature=-crt-static"
+
+WORKDIR /app
+
+COPY . /app
+
+RUN apk --no-cache add pkgconfig musl-dev openssl-dev clang-dev build-base make libheif-dev libpq-dev \
+    && rm -rf /var/cache/apk/*
+
+RUN cargo build --release
+
+FROM alpine:edge
+
+ARG BOT_VERSION=unknown
+ARG FROM_IMAGE_DIGEST=unknown
+ENV BOT_VERSION=$BOT_VERSION
+
+LABEL org.opencontainers.image.title="Tylen Bot"
+LABEL org.opencontainers.image.description="Bot for posting photos in group"
+LABEL org.opencontainers.image.authors="mediclab"
+LABEL org.opencontainers.image.version=$BOT_VERSION
+LABEL org.opencontainers.image.base.name="alpine:edge"
+LABEL org.opencontainers.image.base.digest=$FROM_IMAGE_DIGEST
+
+COPY --from=builder /app/target/release/tylen_bot /usr/local/bin/tylen_bot
+COPY ./locales/ /app
+
+RUN apk --no-cache add ca-certificates openssl libgcc libstdc++ libheif libheif-tools libpq \
+    && rm -rf /var/cache/apk/*
+
+CMD ["tylen_bot"]

@@ -1,0 +1,70 @@
+services:
+  db:
+    image: postgres:16-alpine
+    #    command: [ "postgres", "-c", "log_statement=all" ]
+    environment:
+      POSTGRES_USER: ${DATABASE_USER}
+      POSTGRES_DB: ${DATABASE_DB}
+      POSTGRES_PASSWORD: ${DATABASE_PASSWORD}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U ${DATABASE_USER}" ]
+      interval: 2s
+      timeout: 2s
+      retries: 5
+
+  nats:
+    image: nats:2.10-alpine
+    env_file:
+      - .env
+    command:
+      - '--jetstream'
+      - '--user ${NATS_USER}'
+      - '--pass ${NATS_PASSWORD}'
+      - '--store_dir /opt/data'
+      - '--name "Tylen NATS"'
+    volumes:
+      - nats_data:/opt/data
+    healthcheck:
+      test: ["wget", "http://localhost:8222/healthz", "-q", "-S", "-O", "-"]
+      start_period: 3s
+      retries: 3
+      timeout: 3s
+      interval: 14s
+
+  redis:
+    image: redis:latest
+    volumes:
+      - redis_data:/data
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: [ "CMD", "redis-cli", "ping" ]
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  bot:
+    build:
+      dockerfile: "./Dockerfile"
+      context: .
+    command: sh -c "cargo run --profile docker -- --start"
+    #command: sh -c "tail -f /dev/null"
+    working_dir: /app
+    volumes:
+      - ./:/app
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      nats:
+        condition: service_healthy
+
+volumes:
+  nats_data:
+  db_data:
+  redis_data:
